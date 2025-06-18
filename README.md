@@ -1,9 +1,9 @@
 # OUD-CAPTURE
-Resources for capture-recapture and Bayesian integrated abundance models for estimating opioid use disorder
+Resources for Capture-Recapture (CRC) and Bayesian Integrated Abundance (BIA) models for estimating opioid use disorder (OUD)
 
 
 
-DIAGNOSTIC CODES (LISTS ARE SIMILAR WITH THE EXCEPTION OF HCUP'S USE OF ZCODE : Z79.891	Long-term (current) use of opiate analgesic)
+DIAGNOSTIC CODES (Lists are similar with exception of HCUP's use of Z79.891: Long-term (current) use of opiate analgesic)
 
 OPIOID DATA LAB RESOURCES
 
