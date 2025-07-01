@@ -9,6 +9,9 @@ OPIOID DATA LAB RESOURCES
 
 [OPIOID USE DISORDER](https://github.com/opioiddatalab/Codelists/tree/main/docs/diagnosis_codes/opioid_use_disorder)
 
+An NDC code list for buprenorphine can also be found here:
+[BUPRENORPHINE NDC](https://github.com/opioiddatalab/Codelists/tree/main/docs/opioids/all_opioids/buprenorphine)
+
 HCUP
 
 [OPIOID USE DISORDER](https://www.ncbi.nlm.nih.gov/books/NBK557173/table/sb256.tab7/)
