@@ -2,7 +2,7 @@
 This repository contains CSV files with data related to a published study estimating the prevalance of opiod use disorder in Massachusetts from 2011 to 2015
 
 Data extracted from the following source:  
-Barocas JA, White LF, Wang J, et al. Estimated Prevalence of Opioid Use Disorder in Massachusetts, 2011–2015: A Capture–Recapture Analysis. Am J Public Health. 2018;108(12):1675-1681. doi:10.2105/AJPH.2018.304673
+Barocas JA, White LF, Wang J, et al. Estimated Prevalence of Opioid Use Disorder in Massachusetts, 2011–2015: A Capture–Recapture Analysis. Am J Public Health. 2018;108(12):1675-1681. doi:[10.2105/AJPH.2018.304673](https://doi.org/10.2105/AJPH.2018.304673)
 
 **Table_F.csv** - Contingency table for 2011 databases for capture-recapture.  
 &emsp;APCD=All-payer claims database  
