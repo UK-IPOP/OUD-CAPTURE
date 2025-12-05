@@ -1,0 +1,216 @@
+---
+title: "CRC Analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Load libraries
+```{r}
+#install.packages(tidyverse)
+#install.packages(SparseMSE)
+
+require(tidyverse)
+require(SparseMSE)
+```
+
+## Load the toy data set
+
+```{r}
+# Update this file location 
+crcdata <- read.csv("CRCsimdata.csv",
+                    row.names = 1)
+```
+
+
+Quick check of the data format: a contingency table, with counts (`OUD_count`) for the number of individuals in each `county` in the row's stratum (here, `sex` and `age_group`) in all databases indicated by that row (here, we have **only two linked databases**: `pmp`, `death`). *Estimation stability and robustness improves with more datasets (previous research indicates at least 4).*
+
+```{r}
+head(crcdata)
+```
+ 
+For each strata, within each county, we have a row for each combination of databases and the number of individuals observed in each combination:
+```{r}
+crcdata %>% 
+  filter( county == "A" & 
+            sex =="F" & 
+            age_group == "18_39")
+```
+
+ 
+Quick check of variable types:
+```{r}
+str(crcdata)
+```
+
+
+
+
+## Estimating the (hidden/latent) count of individuals with OUD
+
+The multiple-systems estimation (MSE) model (related to capture-recapture methods, widely used in Ecology) uses a log-Poisson model to estimate the total (hidden/latent/unknown) count of a population (here, individuals with OUD).  With a contigency table (like our toy dataset above), our MSE model assumes that each $Y_i$, the count of individuals "captured" (observed) in the combination of databases indicated by the $i$th row of our contingency table, can be modeled as:
+
+$$ Y_i \sim \text{Poisson}(\lambda_i) $$
+
+$$\text{log}(\lambda_i) = \beta_0 + \sum_k \beta_k X_{ik} + \sum_k \sum_{k'} \gamma_{kk'} X_{ik} X_{ik'} $$
+where $X_{ik}$ is a binary indicator of whether database $k$ is used in row $i$, and $\beta_k$ and $\gamma_{kk'}$ are main and interaction effects for each database. To ensure identifiability, we often assume all third-order and higher interaction effects are zero.  The model given above includes 1 + $K$  + .5$K(K-1)$ parameters, and we use a stepwise selection process to choose which second-order interaction terms to include in the final model.
+
+Our county-level estimate of the true number of individuals with OUD is the sum of all observed OUD cases across all databases, ($\sum_i Y_i$) plus our estimate of any "uncaptured" cases ($\beta_0$).  The capture-recapture models only require counts of OUD cases from the linked databases and generally do not use any additional county- or individual-level covariates. However, previous research has shown that heterogeneity across subsets (strata) of a CRC population requires separate analyses by strata, when there heterogeneity of counts across available strata exists.
+
+*Bootstrap confidence intervals*: Because the $Y_i$ in our log-Poisson model are dependent by construction, we *cannot* rely on standard confidence interval estimates from the log-Poisson model (e.g., the `glm` function).  Instead, we calculate bootstrap-based confidence intervals (see documentation for the `SparseMSE::estimatepopulation` function for more details).
+
+
+In practice, we will separate counties into "large" and "small" ones:
+```{r}
+min_large_pop <- 500000
+
+crcdata_larger <- crcdata %>%
+  filter( pop_est > min_large_pop )
+
+crcdata_smaller <- crcdata %>% 
+  filter( pop_est < min_large_pop )
+```
+
+and specify what confidence level we will use for our bootstrap confidence intervals:
+```{r}
+CI_alpha <- .05 # (1-CI_alpha)100% CIs
+```
+### Larger, heterogenous counties
+In counties where there are differences across strata (i.e., the counts differ across strata) and we have sufficient counts to accommodate strata-level analyses (e.g., nonzero counts of individuals captured by more than one database), we perform CRC at the strata level.
+
+```{r}
+crc_larger_results <- crcdata_larger %>%
+  group_by(county,sex,age_group) %>%
+  summarize( OUD_sum = sum(OUD_count) ) %>%
+  mutate( OUD_est = NA, OUD_CI_lower = NA, OUD_CI_upper = NA)
+
+for (county_i in unique(crcdata_larger$county)){
+  
+  crcdata_larger_county_i <- crcdata_larger %>%
+    filter( county == county_i )
+  
+  for (sex_j in c("M","F")){
+    for (age_j in unique(crcdata_larger$age_group)){
+      crcdata_larger_county_i_strata_j <- crcdata_larger_county_i %>%
+        filter( sex == sex_j,
+                age_group == age_j )
+      
+      if (nrow(crcdata_larger_county_i_strata_j)>2){ ## need overlap across databases
+        crc_results_j <- estimatepopulation( crcdata_larger_county_i_strata_j %>%  
+                                               ungroup() %>%
+                                               select(pmp,death,OUD_count) %>%
+                                               as.matrix(),
+                                             method = "main",   # can switch to "stepwise", 
+                                                                # with more than 2 linked 
+                                                                # databases; see also pthresh arg.
+                                             alpha = c(CI_alpha/2,1-CI_alpha/2)) 
+        ## we'll use the bootstrap method for CIs; could switch to estimatepopulation.0 to get
+        ##    estimates only (and speed up computation)
+        crc_larger_results[ crc_larger_results$county == county_i &
+                              crc_larger_results$sex == sex_j &
+                              crc_larger_results$age_group == age_j,
+                            c("OUD_est","OUD_CI_lower","OUD_CI_upper")] <- 
+          list( OUD_est = crc_results_j$popest,
+                OUD_CI_lower = crc_results_j$BCaquantiles[1],
+                OUD_CI_upper = crc_results_j$BCaquantiles[2] )
+  }}}
+}
+```
+#### Table of Results
+```{r}
+crc_larger_results
+```
+
+#### Plot
+
+```{r, fig.dim = c(12,4) }
+crc_larger_results %>%
+  pivot_longer( c(OUD_sum,OUD_est),
+                  names_to="Estimate",
+                  values_to="Count") %>% 
+  ggplot(aes( y = age_group,
+                col = sex)) + 
+  geom_segment(aes(x = OUD_CI_lower,
+                     xend = OUD_CI_upper),
+                 lwd = 2, alpha = .2) + 
+  geom_point(aes(x=Count,shape=Estimate),size=3) + 
+  facet_wrap(vars(county),labeller="label_both") +
+  xlab("Count (Log Scale)") + ylab("Age Group") +
+  scale_shape(labels=c("CRC point estimate",
+                       "Total observed sum")) +
+  theme_bw() +
+  theme(legend.position = "bottom") + 
+  scale_x_log10()
+```
+
+
+### Smaller, homogenous counties
+
+In counties where there is little difference across strata (i.e., the counts are roughly homogeneous or uniform across strata) or insufficient counts to accomodate strata-level analysis (e.g., counts of individuals captured by more than one database), we collapse counts across strata and perform CRC at the county level.
+
+```{r}
+crcdata_smaller_collapsed <- crcdata_smaller %>%
+  group_by(county,
+           pmp,death) %>%
+  summarize(OUD_count = sum(OUD_count))
+```
+
+```{r}
+crc_smaller_results <- crcdata_smaller_collapsed %>%
+  group_by(county) %>%
+  summarize( OUD_sum = sum(OUD_count) ) %>%
+  mutate( OUD_est = NA, OUD_CI_lower = NA, OUD_CI_upper = NA)
+
+for (county_i in unique(crcdata_smaller_collapsed$county)){
+  
+  crcdata_smaller_county_i <- crcdata_smaller_collapsed %>%
+    filter( county == county_i )
+  
+  if (nrow(crcdata_smaller_county_i)>2){ ## need overlap across databases
+    crc_results_i <- estimatepopulation( crcdata_smaller_county_i %>%  
+                                           ungroup() %>%
+                                           select(pmp,death,OUD_count) %>%
+                                           as.matrix(),
+                                         method = "main",   # can switch to "stepwise", 
+                                                                # with more than 2 linked 
+                                                                # databases; see also pthresh arg.
+                                         alpha = c(CI_alpha/2,1-CI_alpha/2)) 
+    ## we'll use the bootstrap method for CIs; could switch to estimatepopulation.0 to get
+    ##    estimates only (and speed up computation)
+    crc_smaller_results[ crc_smaller_results$county == county_i,
+                         c("OUD_est","OUD_CI_lower","OUD_CI_upper")] <- 
+          list( OUD_est = crc_results_i$popest,
+                OUD_CI_lower = crc_results_i$BCaquantiles[1],
+                OUD_CI_upper = crc_results_i$BCaquantiles[2] )
+  }
+}
+```
+
+#### Table of Results
+```{r}
+crc_smaller_results
+```
+
+#### Plot
+
+```{r}
+crc_smaller_results %>%
+  pivot_longer( c(OUD_sum,OUD_est),
+                  names_to="Estimate",
+                  values_to="Count") %>% 
+  ggplot(aes( #y = age_group,
+              #  col = sex)) + 
+              y = county )) +
+  geom_segment(aes(x = OUD_CI_lower,
+                     xend = OUD_CI_upper),
+                 lwd = 2, alpha = .2) + 
+  geom_point(aes(x=Count,shape=Estimate),size=3) + 
+  #facet_wrap(vars(county),labeller="label_both") +
+  xlab("Count (Log Scale)") + ylab("County") +
+  scale_shape(labels=c("CRC point estimate",
+                       "Total observed sum")) +
+  theme_bw() +
+  theme(legend.position = "bottom") + 
+  scale_x_log10()
+```
+
